@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from datetime import datetime
 from time import mktime
 
@@ -9,17 +7,19 @@ import pytz
 from django.conf import settings
 from django.utils import html
 from django.utils import timezone
+from django.utils.translation import ugettext as _
 
 from .models import Entry, Options, Group, Feed
 
 import logging
+
 logger = logging.getLogger('feedreader')
 
 
 def build_context(request, context={}):
     """
     Find flag and id values in the request and use them
-    to build a common context dictionary. Including the 
+    to build a common context dictionary. Including the
     list of entries to display.
     """
     options = Options.manager.get_options()
@@ -84,7 +84,7 @@ def build_context(request, context={}):
             entries = Entry.objects.all()
         else:
             entries = Entry.objects.filter(read_flag=False)
-        context['entries_header'] = 'All Entries'
+        context['entries_header'] = _('All Entries')
 
     if last_entry:
         entry_list = list(entries)
@@ -113,18 +113,25 @@ def poll_feed(db_feed, verbose=False):
     parsed = feedparser.parse(db_feed.xml_url)
     if hasattr(parsed.feed, 'bozo_exception'):
         # Malformed feed
-        msg = 'Feedreader poll_feeds found Malformed feed, %s: %s' % (db_feed.xml_url, parsed.feed.bozo_exception)
+        msg = 'Feedreader poll_feeds found Malformed feed, "%s": %s' % (db_feed.xml_url, parsed.feed.bozo_exception)
         logger.warning(msg)
         if verbose:
             print(msg)
         return
     if hasattr(parsed.feed, 'published_parsed'):
-        published_time = datetime.fromtimestamp(mktime(parsed.feed.published_parsed))
-        published_time = pytz.timezone(settings.TIME_ZONE).localize(published_time, is_dst=None)
+        if parsed.feed.published_parsed is None:
+            published_time = timezone.now()
+        else:
+            published_time = datetime.fromtimestamp(mktime(parsed.feed.published_parsed))
+        try:
+            published_time = pytz.timezone(settings.TIME_ZONE).localize(published_time, is_dst=None)
+        except pytz.exceptions.AmbiguousTimeError:
+            pytz_timezone = pytz.timezone(settings.TIME_ZONE)
+            published_time = pytz_timezone.localize(published_time, is_dst=False)
         if db_feed.published_time and db_feed.published_time >= published_time:
             return
         db_feed.published_time = published_time
-    for attr in ['title', 'title_detail', 'link', 'description', 'description_detail']:
+    for attr in ['title', 'title_detail', 'link']:
         if not hasattr(parsed.feed, attr):
             msg = 'Feedreader poll_feeds. Feed "%s" has no %s' % (db_feed.xml_url, attr)
             logger.error(msg)
@@ -136,10 +143,13 @@ def poll_feed(db_feed, verbose=False):
     else:
         db_feed.title = parsed.feed.title
     db_feed.link = parsed.feed.link
-    if parsed.feed.description_detail.type == 'text/plain':
-        db_feed.description = html.escape(parsed.feed.description)
+    if hasattr(parsed.feed, 'description_detail') and hasattr(parsed.feed, 'description'):
+        if parsed.feed.description_detail.type == 'text/plain':
+            db_feed.description = html.escape(parsed.feed.description)
+        else:
+            db_feed.description = parsed.feed.description
     else:
-        db_feed.description = parsed.feed.description
+        db_feed.description = ''
     db_feed.last_polled_time = timezone.now()
     db_feed.save()
     if verbose:
@@ -166,11 +176,18 @@ def poll_feed(db_feed, verbose=False):
         db_entry, created = Entry.objects.get_or_create(feed=db_feed, link=entry.link)
         if created:
             if hasattr(entry, 'published_parsed'):
-                published_time = datetime.fromtimestamp(mktime(entry.published_parsed))
-                published_time = pytz.timezone(settings.TIME_ZONE).localize(published_time, is_dst=None)
-                now = timezone.now()
-                if published_time > now:
-                    published_time = now
+                if entry.published_parsed is None:
+                    published_time = timezone.now()
+                else:
+                    published_time = datetime.fromtimestamp(mktime(entry.published_parsed))
+                    try:
+                        published_time = pytz.timezone(settings.TIME_ZONE).localize(published_time, is_dst=None)
+                    except pytz.exceptions.AmbiguousTimeError:
+                        pytz_timezone = pytz.timezone(settings.TIME_ZONE)
+                        published_time = pytz_timezone.localize(published_time, is_dst=False)
+                    now = timezone.now()
+                    if published_time > now:
+                        published_time = now
                 db_entry.published_time = published_time
             if entry.title_detail.type == 'text/plain':
                 db_entry.title = html.escape(entry.title)

@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from django.db import models
 
 
@@ -15,7 +13,7 @@ class OptionsManager(models.Manager):
 
 class Options(models.Model):
     """
-    Options controlling feed reader behavior
+    Options controlling feedreader behavior
 
     :Fields:
 
@@ -36,7 +34,7 @@ class Options(models.Model):
     class Meta:
         verbose_name_plural = "options"
 
-    def __unicode__(self):
+    def __str__(self):
         return u'Options'
 
 
@@ -54,11 +52,11 @@ class Group(models.Model):
     class Meta:
         ordering = ['name']
 
-    def __unicode__(self):
+    def __str__(self):
         return self.name
 
     def num_unread_entries(self):
-        return len(Entry.objects.filter(feed__group=self, read_flag=False))
+        return Entry.objects.filter(feed__group=self, read_flag=False).count()
 
 
 class Feed(models.Model):
@@ -88,16 +86,16 @@ class Feed(models.Model):
     description = models.TextField(blank=True, null=True)
     published_time = models.DateTimeField(blank=True, null=True)
     last_polled_time = models.DateTimeField(blank=True, null=True)
-    group = models.ForeignKey(Group, blank=True, null=True)
+    group = models.ForeignKey(Group, blank=True, null=True, on_delete=models.SET_NULL)
 
     class Meta:
         ordering = ['title']
 
-    def __unicode__(self):
+    def __str__(self):
         return self.title or self.xml_url
 
     def num_unread_entries(self):
-        return len(Entry.objects.filter(feed=self, read_flag=False))
+        return Entry.objects.filter(feed=self, read_flag=False).count()
 
 
     def save(self, *args, **kwargs):
@@ -108,6 +106,7 @@ class Feed(models.Model):
         except Feed.DoesNotExist:
             super(Feed, self).save(*args, **kwargs)
             from feedreader.utils import poll_feed
+
             poll_feed(self)
 
 
@@ -133,7 +132,7 @@ class Entry(models.Model):
         updated_time : date_time
             When entry was last updated.
     """
-    feed = models.ForeignKey(Feed)
+    feed = models.ForeignKey(Feed, on_delete=models.CASCADE)
     title = models.CharField(max_length=2000, blank=True, null=True)
     link = models.CharField(max_length=2000)
     description = models.TextField(blank=True, null=True)
@@ -144,7 +143,7 @@ class Entry(models.Model):
         ordering = ['-published_time']
         verbose_name_plural = 'entries'
 
-    def __unicode__(self):
+    def __str__(self):
         return self.title
 
     objects = models.Manager()

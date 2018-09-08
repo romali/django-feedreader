@@ -1,8 +1,6 @@
 """Feedreader Utils Unit Test."""
-from __future__ import absolute_import
-
 from datetime import datetime
-from StringIO import StringIO
+from io import StringIO
 
 from django.test import TestCase
 
@@ -17,11 +15,12 @@ class PollFeedTest(TestCase):
     """
     Test polling feeds.
     """
+
     def setUp(self):
         # Create feedparser.parse_mock object
         parse_mock = Mock()
         del parse_mock.return_value.feed.bozo_exception
-        parse_mock.return_value.feed.published_parsed = (2014, 01, 01,
+        parse_mock.return_value.feed.published_parsed = (2014, 1, 1,
                                                          12, 0, 0,
                                                          2, 1, 0)  # 2014-01-01 12:00:00
         parse_mock.return_value.entries = []
@@ -43,7 +42,7 @@ class PollFeedTest(TestCase):
                 poll_feed(feed_mock, verbose=True)
 
             # Published time in DB later than on feed
-            feed_mock.published_time = pytz.utc.localize(datetime(2014, 01, 01, 13, 0, 0))
+            feed_mock.published_time = pytz.utc.localize(datetime(2014, 1, 1, 13, 0, 0))
             with patch('sys.stdout', new=StringIO()):  # Suppress printed output from test
                 poll_feed(feed_mock, verbose=True)
 
@@ -70,6 +69,7 @@ class PollFeedBozoExceptionTest(TestCase):
     """
     Test polling feeds where Bozo Exception returned.
     """
+
     def setUp(self):
         feed_mock = Mock(spec=Feed)
         feed_mock.xml_url = 'test-feed-url'
@@ -88,7 +88,7 @@ class PollEntriesTest(TestCase):
         # Create feedparser.parse_mock object
         parse_mock = Mock()
         del parse_mock.return_value.feed.bozo_exception
-        parse_mock.return_value.feed.published_parsed = (2014, 01, 01,
+        parse_mock.return_value.feed.published_parsed = (2014, 1, 1,
                                                          12, 0, 0,
                                                          2, 1, 0)  # 2014-01-01 12:00:00
         self.parse_mock = parse_mock
@@ -104,8 +104,8 @@ class PollEntriesTest(TestCase):
         """Test with missing attribute: description_detail"""
         parse_mock = self.parse_mock
         entry_attrs = {'link': 'test_entry_link',
-                       'published_parsed': (2014, 01, 01, 12, 0, 0, 2, 1, 0),  # 2014-01-01 12:00:00
-                       }
+                       'published_parsed': (2014, 1, 1, 12, 0, 0, 2, 1, 0),  # 2014-01-01 12:00:00
+        }
         entry_mock = Mock(**entry_attrs)
         entry_mock.title = ''
         parse_mock.return_value.entries = [entry_mock]
@@ -120,8 +120,8 @@ class PollEntriesTest(TestCase):
         """Test with missing attribute: description_detail"""
         parse_mock = self.parse_mock
         entry_attrs = {'link': 'test_entry_link',
-                       'published_parsed': (2014, 01, 01, 12, 0, 0, 2, 1, 0),  # 2014-01-01 12:00:00
-                       }
+                       'published_parsed': (2014, 1, 1, 12, 0, 0, 2, 1, 0),  # 2014-01-01 12:00:00
+        }
         entry_mock = Mock(**entry_attrs)
         del entry_mock.description
         parse_mock.return_value.entries = [entry_mock]
@@ -136,8 +136,8 @@ class PollEntriesTest(TestCase):
         """Test with future entry published time"""
         parse_mock = self.parse_mock
         entry_attrs = {'link': 'test_entry_link',
-                       'published_parsed': (2114, 01, 01, 12, 0, 0, 2, 1, 0),  # 2114-01-01 12:00:00
-                       }
+                       'published_parsed': (2114, 1, 1, 12, 0, 0, 2, 1, 0),  # 2114-01-01 12:00:00
+        }
         entry_mock = Mock(**entry_attrs)
         entry_mock.description_detail.type = 'text/plain'
         entry_mock.description = 'Test Feed Description'

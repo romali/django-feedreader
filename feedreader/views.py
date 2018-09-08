@@ -5,18 +5,16 @@ import json
 from xml.etree import ElementTree
 from xml.dom import minidom
 
-from django.contrib import messages
-from django.core.urlresolvers import reverse_lazy
-from django.db.models import get_model
+from django.apps import apps
+from django.urls import reverse_lazy
 from django.http import HttpResponse
-from django.shortcuts import redirect, render, render_to_response
-from django.template import RequestContext
 from django.views.generic import ListView, FormView, TemplateView, View
 
 from braces.views import LoginRequiredMixin
 
+from .constants import LOGOUT_URL
 from .forms import AddFeedsForm, StringSearchForm
-from .models import Group, Feed, Entry
+from .models import Group, Feed, Entry, Options
 from .utils import build_context
 
 
@@ -78,6 +76,7 @@ class FeedList(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super(FeedList, self).get_context_data(**kwargs)
+        context['logout_url'] = LOGOUT_URL
         context['no_group'] = Feed.objects.filter(group=None)
         self.extra_context.update(context)
         return self.extra_context
@@ -87,7 +86,7 @@ class Search(LoginRequiredMixin, TemplateView):
     """
     Simple string search.
 
-    Display entries with titles and/or descriptions which 
+    Display entries with titles and/or descriptions which
     contain the string searched for.
     """
     template_name = 'feedreader/search_results.html'
@@ -97,6 +96,7 @@ class Search(LoginRequiredMixin, TemplateView):
         form = StringSearchForm(request.GET)
         search_string = form.cleaned_data['feedreader_search_string'] if form.is_valid() else ''
         context['feedreader_search_string'] = search_string
+        context['logout_url'] = LOGOUT_URL
         if len(search_string) < 3:
             context['too_small'] = True
         else:
@@ -117,35 +117,36 @@ class EditFeeds(LoginRequiredMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super(EditFeeds, self).get_context_data(**kwargs)
+        context['logout_url'] = LOGOUT_URL
         context['groups'] = Group.objects.select_related().all()
         context['no_group'] = Feed.objects.filter(group=None)
+        context['feedreader_options'] = Options.manager.get_options()
         return context
 
     def form_valid(self, form):
-        if form.is_valid():
-            feed_url = form.cleaned_data.get('feed_url')
-            feed_group = form.cleaned_data.get('feed_group')
-            if feed_url:
-                feed = Feed.objects.create(xml_url=feed_url)
-                if feed_group:
-                    feed.group = feed_group
-                    feed.save()
-            new_group = form.cleaned_data.get('new_group')
-            if new_group:
-                group = Group.objects.create(name=new_group)
-            tree = form.cleaned_data.get('opml_file')
-            group = None
-            if tree:
-                for node in tree.iter('outline'):
-                    name = node.attrib.get('text')
-                    url = node.attrib.get('xmlUrl')
-                    if name and url:
-                        try:
-                            feed = Feed.objects.get(xml_url=url)
-                        except Feed.DoesNotExist:
-                            Feed.objects.create(xml_url=url, group=group)
-                    else:
-                        group, created = Group.objects.get_or_create(name=name)
+        feed_url = form.cleaned_data.get('feed_url')
+        feed_group = form.cleaned_data.get('feed_group')
+        if feed_url:
+            feed = Feed.objects.create(xml_url=feed_url)
+            if feed_group:
+                feed.group = feed_group
+                feed.save()
+        new_group = form.cleaned_data.get('new_group')
+        if new_group:
+            group = Group.objects.create(name=new_group)
+        tree = form.cleaned_data.get('opml_file')
+        group = None
+        if tree:
+            for node in tree.iter('outline'):
+                name = node.attrib.get('text')
+                url = node.attrib.get('xmlUrl')
+                if name and url:
+                    try:
+                        feed = Feed.objects.get(xml_url=url)
+                    except Feed.DoesNotExist:
+                        Feed.objects.create(xml_url=url, group=group)
+                else:
+                    group, created = Group.objects.get_or_create(name=name)
         return self.render_to_response(self.get_context_data(form=form))
 
 
@@ -153,6 +154,7 @@ class ExportOpml(LoginRequiredMixin, View):
     """
     Return feed subscriptions in OPML format.
     """
+
     def get(self, request, *args, **kwargs):
         root = ElementTree.Element('opml')
         root.set('version', '2.0')
@@ -164,28 +166,28 @@ class ExportOpml(LoginRequiredMixin, View):
         feeds = Feed.objects.filter(group=None)
         for feed in feeds:
             feed_xml = ElementTree.SubElement(body,
-                                  'outline',
-                                  {'type': 'rss',
-                                   'text': feed.title,
-                                   'xmlUrl': feed.xml_url,
-                                   }
+                                              'outline',
+                                              {'type': 'rss',
+                                               'text': feed.title,
+                                               'xmlUrl': feed.xml_url,
+                                              }
             )
 
         groups = Group.objects.all()
         for group in groups:
             group_xml = ElementTree.SubElement(body,
-                                   'outline',
-                                   {'text': group.name,
-                                    }
+                                               'outline',
+                                               {'text': group.name,
+                                               }
             )
             feeds = Feed.objects.filter(group=group)
             for feed in feeds:
                 feed_xml = ElementTree.SubElement(group_xml,
-                                      'outline',
-                                      {'type': 'rss',
-                                       'text': feed.title,
-                                       'xmlUrl': feed.xml_url,
-                                       }
+                                                  'outline',
+                                                  {'type': 'rss',
+                                                   'text': feed.title,
+                                                   'xmlUrl': feed.xml_url,
+                                                  }
                 )
         response = HttpResponse(content_type='text/xml')
         response['Content-Disposition'] = 'attachment; filename="feedreader.opml"'
@@ -200,12 +202,13 @@ class UpdateItem(LoginRequiredMixin, View):
 
     @return Empty response.
     """
+
     def post(self, request, *args, **kwargs):
         identifier = request.POST.get('identifier', None)
         data_value = request.POST.get('data_value', None)
         if identifier:
             app_label, model_name, fieldname, primary_key = identifier.split('-')
-            model = get_model(app_label, model_name)
+            model = apps.get_model(app_label, model_name)
             if primary_key.isdigit():
                 item = model.objects.get(pk=primary_key)
                 if fieldname == 'delete':
@@ -217,7 +220,7 @@ class UpdateItem(LoginRequiredMixin, View):
                         data_value = data_value == 'true'
                     elif field_type == 'ForeignKey':
                         if data_value:
-                            data_value = field.rel.to.objects.get(pk=data_value)
+                            data_value = field.remote_field.model.objects.get(pk=data_value)
                             setattr(item, fieldname, data_value)
                         else:
                             setattr(item, fieldname, None)

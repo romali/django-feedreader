@@ -1,19 +1,16 @@
 """Local Server to return RSS feed data for unit testing"""
-from __future__ import absolute_import
-
-import SimpleHTTPServer
-import SocketServer
+import http.server
+import socketserver
 import threading
 
-PORT = 8080
-TEST_RSS = """<?xml version="1.0" encoding="utf-8"?>
+PORT = 8081
+TEST_RSS = b"""<?xml version="1.0" encoding="utf-8"?>
 <rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
     <channel>
         <title>test feed</title>
         <link>http://example.com/test/</link>
         <description>Test Feed.</description>
         <atom:link href="http://example.com/test/feed/" rel="self"></atom:link>
-        <language>en-gb</language>
         <lastBuildDate>Sun, 13 Apr 2014 09:33:47 +0000</lastBuildDate>
         <item>
             <title>Test Entry</title>
@@ -33,7 +30,7 @@ TEST_RSS = """<?xml version="1.0" encoding="utf-8"?>
 </rss>"""
 
 
-class Handler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+class Handler(http.server.SimpleHTTPRequestHandler):
     """Local Server to return RSS feed data"""
 
     def do_GET(self):
@@ -49,20 +46,25 @@ class Handler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         """Suppress display of status code messages on terminal"""
         pass
 
-class TestServer(SocketServer.TCPServer):
+
+class TestServer(socketserver.TCPServer):
     allow_reuse_address = True
+
 
 test_server = TestServer(('', PORT), Handler)
 
+
 def setUpModule():
     """Start server to return test rss data"""
-    thread = threading.Thread(target = test_server.serve_forever)
+    thread = threading.Thread(target=test_server.serve_forever)
     thread.daemon = True
     thread.start()
+
 
 def tearDownModule():
     """Stop server which returned test rss data"""
     test_server.shutdown()
+
 
 if __name__ == '__main__':  # pragma: no cover
     test_server.serve_forever()
